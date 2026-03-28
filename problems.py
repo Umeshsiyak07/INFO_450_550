@@ -9,7 +9,7 @@ CSP problem definitions for:
 Each problem exposes a shared interface:
     problem.variables         -> list of variable names
     problem.domains           -> dict {var: [values]}
-    problem.get_random_state()-> dict {var: value}  (complete random assignment)
+    problem.random_state()-> dict {var: value}  (complete random assignment)
     problem.is_goal(state)    -> bool
     problem.cost(state)       -> float (lower is better; 0 = solved)
     problem.constraint_violations(state) -> int
@@ -23,7 +23,7 @@ import random
 # 1. N-Queens
 # ---------------------------------------------------------------------------
 
-class NQueens:
+class NQueensProblem:
     """
     Place N queens on an N×N board so no two share a row, column, or diagonal.
     Variables : columns 0..N-1
@@ -36,9 +36,7 @@ class NQueens:
         self.variables = list(range(n))
         self.domains = {col: list(range(n)) for col in range(n)}
 
-    # --- shared interface ---------------------------------------------------
-
-    def get_random_state(self):
+    def random_state(self):
         return {col: random.choice(self.domains[col]) for col in self.variables}
 
     def constraint_violations(self, state):
@@ -47,10 +45,8 @@ class NQueens:
         for i in range(len(cols)):
             for j in range(i + 1, len(cols)):
                 ri, rj = state[cols[i]], state[cols[j]]
-                # same row
                 if ri == rj:
                     violations += 1
-                # same diagonal
                 if abs(ri - rj) == abs(cols[i] - cols[j]):
                     violations += 1
         return violations
@@ -60,8 +56,6 @@ class NQueens:
 
     def is_goal(self, state):
         return self.constraint_violations(state) == 0
-
-    # --- helpers ------------------------------------------------------------
 
     def display(self, state):
         board = [["." for _ in range(self.n)] for _ in range(self.n)]
@@ -104,7 +98,6 @@ class JobShopScheduling:
         self.jobs = jobs if jobs is not None else self.FT06
         self.n_jobs = len(self.jobs)
         self.n_machines = len(self.jobs[0])
-        # generous upper bound for domain
         self.t_max = t_max if t_max is not None else sum(
             d for job in self.jobs for _, d in job
         )
@@ -116,15 +109,13 @@ class JobShopScheduling:
         ]
         self.domains = {v: list(range(self.t_max)) for v in self.variables}
 
-    # --- shared interface ---------------------------------------------------
-
-    def get_random_state(self):
+    def random_state(self):
         return {v: random.choice(self.domains[v]) for v in self.variables}
 
     def constraint_violations(self, state):
         violations = 0
 
-        # Precedence constraints
+        # constraints
         for j, job in enumerate(self.jobs):
             for s in range(len(job) - 1):
                 _, dur = job[s]
@@ -133,8 +124,7 @@ class JobShopScheduling:
                 if start_s + dur > start_next:
                     violations += 1
 
-        # No-overlap constraints (machine capacity)
-        # Group operations by machine
+        # No overlap constraints (machine capacity)
         machine_ops = {}
         for j, job in enumerate(self.jobs):
             for s, (m, dur) in enumerate(job):
@@ -147,7 +137,7 @@ class JobShopScheduling:
                 for k in range(i + 1, len(ops)):
                     j2, s2, d2 = ops[k]
                     st2 = state[(j2, s2)]
-                    # overlap if intervals intersect
+                    # if intervals intersect then overlap
                     if st1 < st2 + d2 and st2 < st1 + d1:
                         violations += 1
 
@@ -161,7 +151,6 @@ class JobShopScheduling:
         return max(end_times)
 
     def cost(self, state):
-        # Penalise violations heavily; also consider makespan
         violations = self.constraint_violations(state)
         if violations > 0:
             return float(violations * 1000 + self.makespan(state))
@@ -274,20 +263,19 @@ class AirportLoadBalancing:
         self.variables = sorted(self.TRAFFIC_SCORES.keys())
         self.domains = {s: list(self.LABELS) for s in self.variables}
 
-        # Pre-compute high-traffic states for adjacency constraint
+        # computing high-traffic states for adjacency constraint
         self.high_traffic = {
             s for s, score in self.TRAFFIC_SCORES.items()
             if score >= self.HIGH_TRAFFIC_THRESHOLD
         }
 
-    # --- shared interface ---------------------------------------------------
 
-    def get_random_state(self):
+    def random_state(self):
         return {s: random.choice(self.LABELS) for s in self.variables}
 
     def constraint_violations(self, state):
         violations = 0
-
+        #Constraints
         # Adjacency: neighboring high-traffic states cannot both be Red
         checked = set()
         for s in self.high_traffic:
@@ -311,16 +299,15 @@ class AirportLoadBalancing:
         """
         total = 0.0
         for s, label in state.items():
-            rank = self.LABEL_RANK[label] / 3.0          # normalise to [0,1]
+            rank = self.LABEL_RANK[label] / 3.0          # for normalising to [0,1]
             traffic = self.TRAFFIC_SCORES[s]
-            # penalise mismatch between rank and traffic score
             total += 1.0 - abs(rank - traffic)
         return total / len(self.variables)
 
     def cost(self, state):
         violations = self.constraint_violations(state)
         soft = self.soft_score(state)
-        # violations dominate; soft score breaks ties
+        # violations dominate and soft score breaks ties
         return float(violations * 100) + (1.0 - soft)
 
     def is_goal(self, state):
